@@ -1,0 +1,47 @@
+name: replay-workbench
+
+services:
+  backend:
+    build: ./backend
+    image: replay-workbench-backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  frontend:
+    build: ./frontend
+    image: replay-workbench-frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # 一次性验收：执行后端测试、前端测试与构建、API 冒烟后自行退出。
+  # 用法：docker compose up --build --exit-code-from verify verify
+  verify:
+    build:
+      context: .
+      dockerfile: verify/Dockerfile
+    image: replay-workbench-verify
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://backend:8000
+    restart: "no"
